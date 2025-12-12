@@ -66,7 +66,7 @@ A high-performance Go library for parsing Adobe Photoshop PSD files. This is a c
 ## Installation
 
 ```bash
-go get github.com/layervault/psd.rb/go
+go get github.com/Mark24Code/psd
 ```
 
 ## Requirements
@@ -81,7 +81,7 @@ package main
 
 import (
     "fmt"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
@@ -115,7 +115,7 @@ package main
 
 import (
     "fmt"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
@@ -145,7 +145,7 @@ package main
 import (
     "fmt"
     "strings"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
