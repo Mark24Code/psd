@@ -147,55 +147,15 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 			srcColor := layerImg.At(x, y)
 			dstColor := r.canvas.At(dstX, dstY)
 
-			// Blend using normal blend mode with layer opacity
-			blended := r.blendNormal(srcColor, dstColor, layer.Opacity)
+			// Get blend function based on layer's blend mode
+			blendFunc := GetBlendFunc(layer.BlendModeKey)
+			blended := blendFunc(srcColor, dstColor, layer.Opacity)
 
 			r.canvas.Set(dstX, dstY, blended)
 		}
 	}
 
 	return nil
-}
-
-// blendNormal performs normal blend mode (source over)
-func (r *Renderer) blendNormal(src, dst color.Color, opacity uint8) color.RGBA {
-	sr, sg, sb, sa := src.RGBA()
-	dr, dg, db, da := dst.RGBA()
-
-	// Apply layer opacity
-	alpha := uint32(opacity) * sa / 255 / 257
-
-	if alpha == 0 {
-		return color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
-	}
-
-	if alpha == 255 && da == 0 {
-		return color.RGBA{uint8(sr >> 8), uint8(sg >> 8), uint8(sb >> 8), uint8(alpha)}
-	}
-
-	// Alpha compositing: C = (Cs * As + Cd * Ad * (1 - As)) / Ao
-	// where Ao = As + Ad * (1 - As)
-	outAlpha := alpha + (da*(255-alpha))/255
-
-	if outAlpha == 0 {
-		return color.RGBA{0, 0, 0, 0}
-	}
-
-	// Convert from 16-bit to 8-bit color space
-	sr8, sg8, sb8 := sr>>8, sg>>8, sb>>8
-	dr8, dg8, db8 := dr>>8, dg>>8, db>>8
-
-	// Blend colors
-	outRed := (sr8*alpha + dr8*da*(255-alpha)/255) / outAlpha
-	outGreen := (sg8*alpha + dg8*da*(255-alpha)/255) / outAlpha
-	outBlue := (sb8*alpha + db8*da*(255-alpha)/255) / outAlpha
-
-	return color.RGBA{
-		uint8(outRed),
-		uint8(outGreen),
-		uint8(outBlue),
-		uint8(outAlpha),
-	}
 }
 
 // ToPNG renders the node to a PNG image

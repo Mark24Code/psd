@@ -280,8 +280,34 @@ func (n *Node) GetTextContent() string {
 
 // FillOpacity returns the fill opacity (default 255 for now)
 func (n *Node) FillOpacity() uint8 {
-	// TODO: Parse from layer info
+	if n.Layer != nil {
+		return n.Layer.GetFillOpacity()
+	}
 	return 255
+}
+
+// GetLayerID returns the layer ID
+func (n *Node) GetLayerID() int32 {
+	if n.Layer != nil {
+		return n.Layer.GetLayerID()
+	}
+	return 0
+}
+
+// GetUnicodeName returns the unicode name if available
+func (n *Node) GetUnicodeName() string {
+	if n.Layer != nil {
+		return n.Layer.GetUnicodeName()
+	}
+	return n.Name
+}
+
+// HasVectorMask checks if the layer has a vector mask
+func (n *Node) HasVectorMask() bool {
+	if n.Layer != nil {
+		return n.Layer.HasVectorMask()
+	}
+	return false
 }
 
 // UpdateDimensions recursively updates the dimensions of group nodes based on their children
