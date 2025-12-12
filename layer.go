@@ -691,12 +691,9 @@ func (l *Layer) ToImage() (*image.RGBA, error) {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	// Channel IDs: -2 = layer mask, -1 = transparency, 0 = red, 1 = green, 2 = blue
-	var rData, gData, bData, aData, maskData []byte
+	var rData, gData, bData, aData []byte
 
-	// Get channel data
-	if ch, exists := l.channels[-2]; exists {
-		maskData = ch.Data
-	}
+	// Get channel data (mask data is now handled in renderer)
 	if ch, exists := l.channels[-1]; exists {
 		aData = ch.Data
 	}
