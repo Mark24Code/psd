@@ -314,14 +314,17 @@ func (l *Layer) parseChannelData() error {
 	l.ChannelData = make(map[int16][]byte)
 
 	for _, chanInfo := range l.ChannelInfo {
+		// Debug: Check if channel is being skipped
 		if chanInfo.Length <= 2 {
+			// This channel has no data or only compression header, skip it
 			continue
 		}
 
 		// Read compression method
 		compression, err := l.file.ReadUint16()
 		if err != nil {
-			return err
+			// File read error - possibly EOF or wrong position
+			return fmt.Errorf("failed to read compression for channel %d (length=%d): %w", chanInfo.ID, chanInfo.Length, err)
 		}
 
 		dataLength := chanInfo.Length - 2
@@ -330,7 +333,7 @@ func (l *Layer) parseChannelData() error {
 		case 0: // Raw data
 			data := make([]byte, dataLength)
 			if _, err := l.file.Read(data); err != nil {
-				return err
+				return fmt.Errorf("failed to read raw data for channel %d: %w", chanInfo.ID, err)
 			}
 			l.ChannelData[chanInfo.ID] = data
 			l.channels[chanInfo.ID] = &ChannelImage{
@@ -343,7 +346,7 @@ func (l *Layer) parseChannelData() error {
 			// Read RLE compressed data
 			compressedData := make([]byte, dataLength)
 			if _, err := l.file.Read(compressedData); err != nil {
-				return err
+				return fmt.Errorf("failed to read RLE data for channel %d: %w", chanInfo.ID, err)
 			}
 
 			// Decompress RLE
@@ -362,7 +365,7 @@ func (l *Layer) parseChannelData() error {
 		default:
 			// Skip unknown compression
 			if err := l.file.Skip(int64(dataLength)); err != nil {
-				return err
+				return fmt.Errorf("failed to skip unknown compression %d for channel %d: %w", compression, chanInfo.ID, err)
 			}
 		}
 	}

@@ -92,9 +92,9 @@ func (lm *LayerMask) parseLayerInfo() error {
 	}
 
 	// Parse layer channel image data
-	for _, layer := range lm.Layers {
+	for i, layer := range lm.Layers {
 		if err := layer.parseChannelData(); err != nil {
-			return fmt.Errorf("failed to parse channel data for layer %s: %w", layer.Name, err)
+			return fmt.Errorf("failed to parse channel data for layer %d (%s): %w", i, layer.Name, err)
 		}
 	}
 
