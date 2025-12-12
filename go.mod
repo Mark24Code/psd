@@ -1,4 +1,4 @@
-module github.com/layervault/psd.rb/go
+module github.com/Mark24Code/psd
 
 go 1.21
 
