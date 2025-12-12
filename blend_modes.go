@@ -39,6 +39,8 @@ func GetBlendFunc(blendMode string) BlendFunc {
 		return blendLinearDodge
 	case "linear_burn", "lbrn":
 		return blendLinearBurn
+	case "color", "colr":
+		return blendColor
 	default:
 		// Default to normal for unknown modes
 		return blendNormal
@@ -350,4 +352,143 @@ func clamp(v float64) float64 {
 		return 255
 	}
 	return v
+}
+
+// rgbToHSL converts RGB to HSL color space
+// H: 0-360, S: 0-1, L: 0-1
+func rgbToHSL(r, g, b uint8) (h, s, l float64) {
+	// Normalize to 0-1
+	rf := float64(r) / 255.0
+	gf := float64(g) / 255.0
+	bf := float64(b) / 255.0
+
+	max := math.Max(rf, math.Max(gf, bf))
+	min := math.Min(rf, math.Min(gf, bf))
+	delta := max - min
+
+	// Lightness
+	l = (max + min) / 2.0
+
+	if delta == 0 {
+		// Achromatic (gray)
+		return 0, 0, l
+	}
+
+	// Saturation
+	if l < 0.5 {
+		s = delta / (max + min)
+	} else {
+		s = delta / (2.0 - max - min)
+	}
+
+	// Hue
+	switch max {
+	case rf:
+		h = ((gf - bf) / delta)
+		if gf < bf {
+			h += 6.0
+		}
+	case gf:
+		h = ((bf - rf) / delta) + 2.0
+	case bf:
+		h = ((rf - gf) / delta) + 4.0
+	}
+	h *= 60.0
+
+	return h, s, l
+}
+
+// hslToRGB converts HSL to RGB color space
+func hslToRGB(h, s, l float64) (r, g, b uint8) {
+	if s == 0 {
+		// Achromatic
+		val := uint8(l * 255)
+		return val, val, val
+	}
+
+	var q float64
+	if l < 0.5 {
+		q = l * (1.0 + s)
+	} else {
+		q = l + s - l*s
+	}
+	p := 2.0*l - q
+
+	// Helper function for RGB channels
+	hueToRGB := func(p, q, t float64) float64 {
+		if t < 0 {
+			t += 1
+		}
+		if t > 1 {
+			t -= 1
+		}
+		if t < 1.0/6.0 {
+			return p + (q-p)*6.0*t
+		}
+		if t < 0.5 {
+			return q
+		}
+		if t < 2.0/3.0 {
+			return p + (q-p)*(2.0/3.0-t)*6.0
+		}
+		return p
+	}
+
+	h /= 360.0
+	r = uint8(hueToRGB(p, q, h+1.0/3.0) * 255)
+	g = uint8(hueToRGB(p, q, h) * 255)
+	b = uint8(hueToRGB(p, q, h-1.0/3.0) * 255)
+
+	return r, g, b
+}
+
+// blendColor performs color blend mode (HSL-based)
+// Takes hue and saturation from source, luminosity from destination
+func blendColor(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Apply layer opacity
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+	}
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// If destination is fully transparent, just return source
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Convert to HSL
+	srcH, srcS, _ := rgbToHSL(sr8, sg8, sb8)
+	_, _, dstL := rgbToHSL(dr8, dg8, db8)
+
+	// Combine: source hue/saturation + destination luminosity
+	blendR, blendG, blendB := hslToRGB(srcH, srcS, dstL)
+
+	// Alpha composite the result
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	dr8 = uint8(dr >> 8)
+	dg8 = uint8(dg >> 8)
+	db8 = uint8(db >> 8)
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
 }

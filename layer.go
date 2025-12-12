@@ -316,6 +316,17 @@ func (l *Layer) parseChannelData() error {
 	l.channels = make(map[int16]*ChannelImage)
 	l.ChannelData = make(map[int16][]byte)
 
+	// Debug logging for specific layer
+	isColorFillLayer := l.Name == "颜色填充 2"
+	if isColorFillLayer {
+		fmt.Printf("\n=== DEBUG: Parsing channels for layer '%s' ===\n", l.Name)
+		fmt.Printf("Layer Opacity: %d\n", l.Opacity)
+		fmt.Printf("Number of channels: %d\n", len(l.ChannelInfo))
+		for i, ch := range l.ChannelInfo {
+			fmt.Printf("  Channel[%d]: ID=%d, Length=%d\n", i, ch.ID, ch.Length)
+		}
+	}
+
 	for _, chanInfo := range l.ChannelInfo {
 		// Record file position at start of this channel
 		startPos, err := l.file.Tell()
@@ -374,6 +385,34 @@ func (l *Layer) parseChannelData() error {
 				ID:          chanInfo.ID,
 				Data:        decompressed,
 				Compression: compression,
+			}
+
+			// Debug logging for color fill layer
+			if isColorFillLayer {
+				fmt.Printf("\nChannel %d (RLE decompressed): %d bytes\n", chanInfo.ID, len(decompressed))
+				if len(decompressed) > 0 {
+					// Print first 20 bytes
+					end := 20
+					if len(decompressed) < end {
+						end = len(decompressed)
+					}
+					fmt.Printf("  First %d bytes: %v\n", end, decompressed[:end])
+
+					// Check if all bytes are the same
+					allSame := true
+					if len(decompressed) > 1 {
+						first := decompressed[0]
+						for _, b := range decompressed[1:min(1000, len(decompressed))] {
+							if b != first {
+								allSame = false
+								break
+							}
+						}
+						if allSame {
+							fmt.Printf("  First 1000 bytes are all: %d\n", first)
+						}
+					}
+				}
 			}
 
 		default:
