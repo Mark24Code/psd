@@ -39,6 +39,8 @@ func GetBlendFunc(blendMode string) BlendFunc {
 		return blendLinearDodge
 	case "linear_burn", "lbrn":
 		return blendLinearBurn
+	case "linear_light", "lLit":
+		return blendLinearLight
 	case "color", "colr":
 		return blendColor
 	default:
@@ -296,6 +298,32 @@ func blendLinearBurn(src, dst color.Color, opacity uint8) color.RGBA {
 
 	return applyBlend(sr, sg, sb, sa, dr, dg, db, da, blendR, blendG, blendB, opacity)
 }
+
+// blendLinearLight performs linear light blend mode
+// This matches Ruby psd.rb implementation which uses a custom formula
+func blendLinearLight(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := toFloat(src)
+	dr, dg, db, da := toFloat(dst)
+
+	// Ruby's custom formula: if (dst < 1.0) then min(src*src/(1-dst), 1) else 1
+	// But in integer form: if (b < 255) then min(f*f/(255-b), 255) else 255
+	// Where f and b are in [0,255] range
+	// Converting to float: min((s*255)^2 / (255*(1-d)), 1) = min(255*s*s/(1-d), 1)
+	blendR := linearLightChannel(sr, dr)
+	blendG := linearLightChannel(sg, dg)
+	blendB := linearLightChannel(sb, db)
+
+	return applyBlend(sr, sg, sb, sa, dr, dg, db, da, blendR, blendG, blendB, opacity)
+}
+
+func linearLightChannel(s, d float64) float64 {
+	if d < 1.0 {
+		result := 255.0 * s * s / (1.0 - d) / 255.0
+		return math.Min(result, 1.0)
+	}
+	return 1.0
+}
+
 
 // Helper functions
 
