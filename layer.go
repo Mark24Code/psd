@@ -25,7 +25,7 @@ type Layer struct {
 	Clipping     uint8
 	Flags        uint8
 	Name         string
-	Mask         *LayerMask // Layer mask information
+	Mask         *LayerMaskData // Layer mask information
 
 	// Additional layer information
 	LayerInfo map[string][]byte
@@ -51,8 +51,8 @@ type ChannelInfo struct {
 	Length uint32
 }
 
-// LayerMask represents layer mask information
-type LayerMask struct {
+// LayerMaskData represents layer mask information for an individual layer
+type LayerMaskData struct {
 	Top          int32
 	Left         int32
 	Bottom       int32
@@ -62,17 +62,17 @@ type LayerMask struct {
 }
 
 // Width returns the width of the mask
-func (m *LayerMask) Width() int32 {
+func (m *LayerMaskData) Width() int32 {
 	return m.Right - m.Left
 }
 
 // Height returns the height of the mask
-func (m *LayerMask) Height() int32 {
+func (m *LayerMaskData) Height() int32 {
 	return m.Bottom - m.Top
 }
 
 // IsEmpty returns true if the mask has zero dimensions
-func (m *LayerMask) IsEmpty() bool {
+func (m *LayerMaskData) IsEmpty() bool {
 	return m.Width() == 0 || m.Height() == 0
 }
 
@@ -229,7 +229,7 @@ func (l *Layer) parseLayerMaskData() error {
 	}
 
 	// Parse mask data
-	l.Mask = &LayerMask{}
+	l.Mask = &LayerMaskData{}
 
 	l.Mask.Top, err = l.file.ReadInt32()
 	if err != nil {
