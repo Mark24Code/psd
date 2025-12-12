@@ -183,7 +183,7 @@ package main
 
 import (
     "fmt"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
@@ -223,7 +223,7 @@ package main
 
 import (
     "fmt"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
@@ -258,7 +258,7 @@ package main
 
 import (
     "fmt"
-    psd "github.com/layervault/psd.rb/go"
+    psd "github.com/Mark24Code/psd"
 )
 
 func main() {
@@ -426,6 +426,7 @@ MIT License - Same as the original psd.rb project
 ## Links
 
 - Original Ruby Project: https://github.com/layervault/psd.rb
+- Go Implementation: https://github.com/Mark24Code/psd
 - Go Documentation: See [API.md](API.md)
 - PSD Specification: Adobe Photoshop File Formats Specification
 
@@ -436,4 +437,4 @@ This project is a Go port of the excellent psd.rb library by LayerVault. Special
 ## Support
 
 For bugs, questions, or feature requests, please open an issue on GitHub:
-https://github.com/layervault/psd.rb/issues
+https://github.com/Mark24Code/psd/issues
