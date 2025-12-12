@@ -105,6 +105,7 @@ func (r *Renderer) shouldExcludeNode(node *Node) bool {
 }
 
 // renderLayer renders a single layer to the canvas
+// This matches Ruby's Blender.compose! method (blender.rb:18-42)
 func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 	// Skip if layer has no image data
 	if len(layer.channels) == 0 {
@@ -131,7 +132,13 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 	// Get layer bounds
 	layerBounds := layerImg.Bounds()
 
-	// Composite layer onto canvas using normal blend mode
+	// Calculate opacity using Ruby's formula:
+	// calculated_opacity = opacity * fill_opacity / 255
+	// This matches Ruby's Blender.calculated_opacity (blender.rb:50)
+	calculatedOpacity := uint8((uint32(layer.Opacity) * uint32(layer.FillOpacity())) / 255)
+
+	// Composite layer onto canvas pixel by pixel
+	// This matches Ruby's Blender.compose! loop (blender.rb:30-41)
 	for y := layerBounds.Min.Y; y < layerBounds.Max.Y; y++ {
 		for x := layerBounds.Min.X; x < layerBounds.Max.X; x++ {
 			// Calculate destination position
@@ -139,6 +146,7 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 			dstY := canvasY + y
 
 			// Check if within canvas bounds
+			// This matches Ruby's: next if base_x < 0 || base_y < 0 || ...
 			if dstX < 0 || dstY < 0 || dstX >= r.canvas.Bounds().Dx() || dstY >= r.canvas.Bounds().Dy() {
 				continue
 			}
@@ -148,8 +156,9 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 			dstColor := r.canvas.At(dstX, dstY)
 
 			// Get blend function based on layer's blend mode
+			// This matches Ruby's: Compose.send(fg.node.blending_mode, ...)
 			blendFunc := GetBlendFunc(layer.BlendModeKey)
-			blended := blendFunc(srcColor, dstColor, layer.Opacity)
+			blended := blendFunc(srcColor, dstColor, calculatedOpacity)
 
 			r.canvas.Set(dstX, dstY, blended)
 		}

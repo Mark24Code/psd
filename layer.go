@@ -31,7 +31,8 @@ type Layer struct {
 	LayerInfo map[string][]byte
 
 	// Parsed layer info
-	TypeTool *TypeToolInfo
+	TypeTool     *TypeToolInfo
+	fillOpacity  *uint8 // Parsed from "iOpa" layer info, default 255
 
 	// Channel image data
 	channels    map[int16]*ChannelImage
@@ -371,6 +372,13 @@ func (l *Layer) parseAdditionalLayerInfo(length int64) error {
 				if typeTool, err := ParseTypeTool(data); err == nil {
 					l.TypeTool = typeTool
 				}
+			}
+
+			// Parse FillOpacity if present (key is "iOpa", single byte value)
+			// Matches Ruby's fill_opacity.rb: @value = @file.read_byte.to_i
+			if key == "iOpa" && dataLen >= 1 {
+				val := data[0]
+				l.fillOpacity = &val
 			}
 
 			// Padding to multiple of 4
@@ -750,4 +758,13 @@ func (l *Layer) ToImage() (*image.RGBA, error) {
 	}
 
 	return img, nil
+}
+
+// FillOpacity returns the layer's fill opacity (0-255)
+// Matches Ruby's fill_opacity method: returns 255 if not set
+func (l *Layer) FillOpacity() uint8 {
+	if l.fillOpacity != nil {
+		return *l.fillOpacity
+	}
+	return 255
 }

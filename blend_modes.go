@@ -43,6 +43,30 @@ func GetBlendFunc(blendMode string) BlendFunc {
 		return blendLinearLight
 	case "color", "colr":
 		return blendColor
+	case "vivid_light", "vLit":
+		return blendVividLight
+	case "pin_light", "pLit":
+		return blendPinLight
+	case "hard_mix", "hMix":
+		return blendHardMix
+	case "hue", "hue ":
+		return blendHue
+	case "saturation", "sat ":
+		return blendSaturation
+	case "luminosity", "lum ":
+		return blendLuminosity
+	case "subtract", "fsub":
+		return blendSubtract
+	case "divide", "fdiv":
+		return blendDivide
+	case "dissolve", "diss":
+		return blendDissolve
+	case "darker_color", "dkCl":
+		return blendDarkerColor
+	case "lighter_color", "lgCl":
+		return blendLighterColor
+	case "passthru", "pass":
+		return blendNormal // passthru is same as normal
 	default:
 		// Default to normal for unknown modes
 		return blendNormal
@@ -508,6 +532,540 @@ func blendColor(src, dst color.Color, opacity uint8) color.RGBA {
 	dr8 = uint8(dr >> 8)
 	dg8 = uint8(dg >> 8)
 	db8 = uint8(db >> 8)
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendVividLight performs vivid light blend mode
+// Ruby formula: if (f < 255) then [(b * b / (255 - f) + f * f / (255 - b)) >> 1, 255].min else b
+func blendVividLight(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Vivid Light blend using Ruby's formula
+	vividLightChannel := func(s, d uint8) uint8 {
+		if s < 255 {
+			// (b * b / (255 - f) + f * f / (255 - b)) >> 1
+			term1 := uint32(d) * uint32(d) / uint32(255-s)
+			term2 := uint32(s) * uint32(s) / uint32(255-d)
+			result := (term1 + term2) >> 1
+			if result > 255 {
+				return 255
+			}
+			return uint8(result)
+		}
+		return d
+	}
+
+	blendR := vividLightChannel(sr8, dr8)
+	blendG := vividLightChannel(sg8, dg8)
+	blendB := vividLightChannel(sb8, db8)
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendPinLight performs pin light blend mode
+// Ruby formula: if (f >= 128) then [b, (f - 128) * 2].max else [b, f * 2].min
+func blendPinLight(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Pin Light blend using Ruby's formula
+	pinLightChannel := func(s, d uint8) uint8 {
+		if s >= 128 {
+			// max(b, (f - 128) * 2)
+			temp := (int(s) - 128) * 2
+			if int(d) > temp {
+				return d
+			}
+			return uint8(temp)
+		}
+		// min(b, f * 2)
+		temp := int(s) * 2
+		if int(d) < temp {
+			return d
+		}
+		if temp > 255 {
+			return 255
+		}
+		return uint8(temp)
+	}
+
+	blendR := pinLightChannel(sr8, dr8)
+	blendG := pinLightChannel(sg8, dg8)
+	blendB := pinLightChannel(sb8, db8)
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendHardMix performs hard mix blend mode
+// Ruby formula: (b + f <= 255) ? 0 : 255
+func blendHardMix(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Hard Mix blend using Ruby's formula
+	hardMixChannel := func(s, d uint8) uint8 {
+		if int(d)+int(s) <= 255 {
+			return 0
+		}
+		return 255
+	}
+
+	blendR := hardMixChannel(sr8, dr8)
+	blendG := hardMixChannel(sg8, dg8)
+	blendB := hardMixChannel(sb8, db8)
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendHue performs hue blend mode (HSL-based)
+// Takes hue from source, saturation and luminosity from destination
+func blendHue(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Apply layer opacity
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+	}
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// If destination is fully transparent, just return source
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Convert to HSL
+	srcH, _, _ := rgbToHSL(sr8, sg8, sb8)
+	_, dstS, dstL := rgbToHSL(dr8, dg8, db8)
+
+	// Combine: source hue + destination saturation/luminosity
+	blendR, blendG, blendB := hslToRGB(srcH, dstS, dstL)
+
+	// Alpha composite the result
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	dr8 = uint8(dr >> 8)
+	dg8 = uint8(dg >> 8)
+	db8 = uint8(db >> 8)
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendSaturation performs saturation blend mode (HSL-based)
+// Takes saturation from source, hue and luminosity from destination
+func blendSaturation(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Apply layer opacity
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+	}
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// If destination is fully transparent, just return source
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Convert to HSL
+	_, srcS, _ := rgbToHSL(sr8, sg8, sb8)
+	dstH, _, dstL := rgbToHSL(dr8, dg8, db8)
+
+	// Combine: source saturation + destination hue/luminosity
+	blendR, blendG, blendB := hslToRGB(dstH, srcS, dstL)
+
+	// Alpha composite the result
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	dr8 = uint8(dr >> 8)
+	dg8 = uint8(dg >> 8)
+	db8 = uint8(db >> 8)
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendLuminosity performs luminosity blend mode (HSL-based)
+// Takes luminosity from source, hue and saturation from destination
+func blendLuminosity(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Apply layer opacity
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+	}
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// If destination is fully transparent, just return source
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Convert to HSL
+	_, _, srcL := rgbToHSL(sr8, sg8, sb8)
+	dstH, dstS, _ := rgbToHSL(dr8, dg8, db8)
+
+	// Combine: source luminosity + destination hue/saturation
+	blendR, blendG, blendB := hslToRGB(dstH, dstS, srcL)
+
+	// Alpha composite the result
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	dr8 = uint8(dr >> 8)
+	dg8 = uint8(dg >> 8)
+	db8 = uint8(db >> 8)
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendSubtract performs subtract blend mode
+// Formula: max(dst - src, 0)
+func blendSubtract(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Subtract blend: max(dst - src, 0)
+	subtractChannel := func(s, d uint8) uint8 {
+		if int(d) < int(s) {
+			return 0
+		}
+		return d - s
+	}
+
+	blendR := subtractChannel(sr8, dr8)
+	blendG := subtractChannel(sg8, dg8)
+	blendB := subtractChannel(sb8, db8)
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendDivide performs divide blend mode
+// Formula: min(dst / src * 255, 255), special handling for src == 0
+func blendDivide(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Divide blend: min((dst / src) * 255, 255)
+	divideChannel := func(s, d uint8) uint8 {
+		if s == 0 {
+			return 255
+		}
+		result := (uint32(d) * 255) / uint32(s)
+		if result > 255 {
+			return 255
+		}
+		return uint8(result)
+	}
+
+	blendR := divideChannel(sr8, dr8)
+	blendG := divideChannel(sg8, dg8)
+	blendB := divideChannel(sb8, db8)
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendDissolve performs dissolve blend mode
+// Note: Dissolve requires random dithering, which Ruby also doesn't fully implement
+// For now, fall back to normal blend mode
+func blendDissolve(src, dst color.Color, opacity uint8) color.RGBA {
+	// Dissolve is a special mode that requires random dithering per pixel
+	// Ruby's compose.rb also doesn't implement this, falling back to normal
+	return blendNormal(src, dst, opacity)
+}
+
+// blendDarkerColor performs darker color blend mode
+// Compares total luminosity and picks the darker color
+func blendDarkerColor(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Calculate luminosity (approximation: 0.299*R + 0.587*G + 0.114*B)
+	srcLum := uint32(sr8)*299 + uint32(sg8)*587 + uint32(sb8)*114
+	dstLum := uint32(dr8)*299 + uint32(dg8)*587 + uint32(db8)*114
+
+	var blendR, blendG, blendB uint8
+	if srcLum < dstLum {
+		blendR, blendG, blendB = sr8, sg8, sb8
+	} else {
+		blendR, blendG, blendB = dr8, dg8, db8
+	}
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
+
+	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
+	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
+	outBlue := (uint32(blendB)*alpha + uint32(db8)*da*(255-alpha)/255) / outAlpha
+
+	return color.RGBA{
+		uint8(outRed),
+		uint8(outGreen),
+		uint8(outBlue),
+		uint8(outAlpha),
+	}
+}
+
+// blendLighterColor performs lighter color blend mode
+// Compares total luminosity and picks the lighter color
+func blendLighterColor(src, dst color.Color, opacity uint8) color.RGBA {
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
+
+	// Convert to 8-bit
+	sr8, sg8, sb8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8)
+	dr8, dg8, db8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8)
+
+	// Apply layer opacity to source alpha
+	alpha := uint32(opacity) * sa / 255 / 257
+
+	if alpha == 0 {
+		return color.RGBA{dr8, dg8, db8, uint8(da >> 8)}
+	}
+	if da == 0 {
+		return color.RGBA{sr8, sg8, sb8, uint8(alpha)}
+	}
+
+	// Calculate luminosity (approximation: 0.299*R + 0.587*G + 0.114*B)
+	srcLum := uint32(sr8)*299 + uint32(sg8)*587 + uint32(sb8)*114
+	dstLum := uint32(dr8)*299 + uint32(dg8)*587 + uint32(db8)*114
+
+	var blendR, blendG, blendB uint8
+	if srcLum > dstLum {
+		blendR, blendG, blendB = sr8, sg8, sb8
+	} else {
+		blendR, blendG, blendB = dr8, dg8, db8
+	}
+
+	// Alpha compositing
+	outAlpha := alpha + (da*(255-alpha))/255
+	if outAlpha == 0 {
+		return color.RGBA{0, 0, 0, 0}
+	}
 
 	outRed := (uint32(blendR)*alpha + uint32(dr8)*da*(255-alpha)/255) / outAlpha
 	outGreen := (uint32(blendG)*alpha + uint32(dg8)*da*(255-alpha)/255) / outAlpha
