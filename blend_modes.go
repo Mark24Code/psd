@@ -324,28 +324,71 @@ func blendLinearBurn(src, dst color.Color, opacity uint8) color.RGBA {
 }
 
 // blendLinearLight performs linear light blend mode
-// This matches Ruby psd.rb implementation which uses a custom formula
+// EXACTLY matches Ruby psd.rb compose.rb:197-213
 func blendLinearLight(src, dst color.Color, opacity uint8) color.RGBA {
-	sr, sg, sb, sa := toFloat(src)
-	dr, dg, db, da := toFloat(dst)
+	sr, sg, sb, sa := src.RGBA()
+	dr, dg, db, da := dst.RGBA()
 
-	// Ruby's custom formula: if (dst < 1.0) then min(src*src/(1-dst), 1) else 1
-	// But in integer form: if (b < 255) then min(f*f/(255-b), 255) else 255
-	// Where f and b are in [0,255] range
-	// Converting to float: min((s*255)^2 / (255*(1-d)), 1) = min(255*s*s/(1-d), 1)
-	blendR := linearLightChannel(sr, dr)
-	blendG := linearLightChannel(sg, dg)
-	blendB := linearLightChannel(sb, db)
+	// Convert to 8-bit
+	sr8, sg8, sb8, sa8 := uint8(sr>>8), uint8(sg>>8), uint8(sb>>8), uint8(sa>>8)
+	dr8, dg8, db8, da8 := uint8(dr>>8), uint8(dg>>8), uint8(db>>8), uint8(da>>8)
 
-	return applyBlend(sr, sg, sb, sa, dr, dg, db, da, blendR, blendG, blendB, opacity)
+	// Ruby: return apply_opacity(fg, opacity) if fully_transparent?(bg)
+	if da8 == 0 {
+		// apply_opacity formula: (color & 0xffffff00) | ((color & 0x000000ff) * opacity / 255)
+		outA := uint8((uint32(sa8) * uint32(opacity)) / 255)
+		return color.RGBA{sr8, sg8, sb8, outA}
+	}
+
+	// Ruby: return bg if fully_transparent?(fg)
+	if sa8 == 0 {
+		return color.RGBA{dr8, dg8, db8, da8}
+	}
+
+	// Ruby: calculate_alphas
+	// src_alpha = a(fg) * opacity >> 8
+	srcAlpha := (uint32(sa8) * uint32(opacity)) >> 8
+
+	// dst_alpha = a(bg)
+	dstAlpha := uint32(da8)
+
+	// mix_alpha = (src_alpha << 8) / (src_alpha + ((256 - src_alpha) * dst_alpha >> 8))
+	mixAlpha := (srcAlpha << 8) / (srcAlpha + ((256-srcAlpha)*dstAlpha)>>8)
+
+	// dst_alpha = dst_alpha + ((256 - dst_alpha) * src_alpha >> 8)
+	outAlpha := dstAlpha + ((256-dstAlpha)*srcAlpha)>>8
+
+	// Ruby: calculate_foreground for linear_light
+	// if b < 255 then [f * f / (255 - b), 255].min else 255
+	blendR := linearLightChannel(sr8, dr8)
+	blendG := linearLightChannel(sg8, dg8)
+	blendB := linearLightChannel(sb8, db8)
+
+	// Ruby: blend_channel(bg, fg, mix_alpha)
+	// Formula: ((bg << 8) + (fg - bg) * alpha) >> 8
+	newR := ((uint32(dr8) << 8) + (uint32(blendR)-uint32(dr8))*mixAlpha) >> 8
+	newG := ((uint32(dg8) << 8) + (uint32(blendG)-uint32(dg8))*mixAlpha) >> 8
+	newB := ((uint32(db8) << 8) + (uint32(blendB)-uint32(db8))*mixAlpha) >> 8
+
+	return color.RGBA{
+		uint8(newR),
+		uint8(newG),
+		uint8(newB),
+		uint8(outAlpha),
+	}
 }
 
-func linearLightChannel(s, d float64) float64 {
-	if d < 1.0 {
-		result := 255.0 * s * s / (1.0 - d) / 255.0
-		return math.Min(result, 1.0)
+func linearLightChannel(f, b uint8) uint8 {
+	// Ruby: if b < 255 then [f * f / (255 - b), 255].min else 255
+	if b < 255 {
+		// f * f / (255 - b)
+		result := uint32(f) * uint32(f) / uint32(255-b)
+		if result > 255 {
+			return 255
+		}
+		return uint8(result)
 	}
-	return 1.0
+	return 255
 }
 
 

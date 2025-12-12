@@ -595,8 +595,19 @@ type BlendMode struct {
 
 // decompressRLE decompresses RLE compressed channel data
 func (l *Layer) decompressRLE(compressedData []byte, channelID int16) ([]byte, error) {
-	width := int(l.Width())
-	height := int(l.Height())
+	// CRITICAL FIX: Match Ruby's channel_image.rb logic
+	// When channel ID < -1 (mask channel -2), use mask dimensions
+	// Otherwise use layer dimensions
+	var width, height int
+	if channelID < -1 && l.Mask != nil {
+		// Mask channel - use mask dimensions
+		width = int(l.Mask.Width())
+		height = int(l.Mask.Height())
+	} else {
+		// Regular channels - use layer dimensions
+		width = int(l.Width())
+		height = int(l.Height())
+	}
 
 	if width == 0 || height == 0 {
 		return []byte{}, nil
