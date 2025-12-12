@@ -259,12 +259,112 @@ func (r *ResourceSection) ParseSlices() (*SlicesResource, error) {
 			reader.Seek(4, 1)
 		}
 	} else {
-		// Version 7/8 uses descriptor format - simplified parsing
-		// For now, return empty slices
-		result.Slices = []Slice{}
+		// Version 7/8 uses descriptor format
+		// Need to skip descriptor version first
+		var descriptorVersion uint32
+		if err := binary.Read(reader, binary.BigEndian, &descriptorVersion); err != nil {
+			return nil, err
+		}
+
+		// Get remaining bytes for descriptor parsing
+		remainingBytes := make([]byte, reader.Len())
+		if _, err := reader.Read(remainingBytes); err != nil {
+			return nil, err
+		}
+
+		// Parse descriptor
+		descParser := NewDescriptorParser(remainingBytes)
+		desc, err := descParser.Parse()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse slice descriptor: %w", err)
+		}
+
+		// Normalize data from descriptor to Slice structure
+		result.Bounds = extractBounds(desc, "bounds")
+		if baseName, ok := desc["baseName"].(string); ok {
+			result.Name = baseName
+		}
+
+		// Extract slices array
+		if slicesArray, ok := desc["slices"].([]interface{}); ok {
+			result.Slices = make([]Slice, len(slicesArray))
+			for i, sliceData := range slicesArray {
+				if sliceMap, ok := sliceData.(map[string]interface{}); ok {
+					result.Slices[i] = normalizeSliceV7(sliceMap)
+				}
+			}
+		}
 	}
 
 	return result, nil
+}
+
+// extractBounds extracts Rectangle from descriptor data
+func extractBounds(data map[string]interface{}, key string) Rectangle {
+	bounds := Rectangle{}
+	if boundsMap, ok := data[key].(map[string]interface{}); ok {
+		if top, ok := boundsMap["Top "].(int32); ok {
+			bounds.Top = top
+		}
+		if left, ok := boundsMap["Left"].(int32); ok {
+			bounds.Left = left
+		}
+		if bottom, ok := boundsMap["Btom"].(int32); ok {
+			bounds.Bottom = bottom
+		}
+		if right, ok := boundsMap["Rght"].(int32); ok {
+			bounds.Right = right
+		}
+	}
+	return bounds
+}
+
+// normalizeSliceV7 converts version 7/8 slice data to unified Slice structure
+func normalizeSliceV7(data map[string]interface{}) Slice {
+	slice := Slice{}
+
+	if id, ok := data["sliceID"].(int32); ok {
+		slice.ID = id
+	}
+	if groupID, ok := data["groupID"].(int32); ok {
+		slice.GroupID = groupID
+	}
+	if origin, ok := data["origin"].(int32); ok {
+		slice.Origin = origin
+	}
+	if sliceType, ok := data["Type"].(int32); ok {
+		slice.Type = sliceType
+	}
+
+	// Extract bounds
+	slice.Bounds = extractBounds(data, "bounds")
+
+	// Extract strings
+	if url, ok := data["url"].(string); ok {
+		slice.URL = url
+	}
+	if msg, ok := data["Msge"].(string); ok {
+		slice.Message = msg
+	}
+	if alt, ok := data["altTag"].(string); ok {
+		slice.Alt = alt
+	}
+	if cellText, ok := data["cellText"].(string); ok {
+		slice.CellText = cellText
+	}
+
+	// Extract boolean and integers
+	if htmlFlag, ok := data["cellTextIsHTML"].(bool); ok {
+		slice.CellTextIsHTML = htmlFlag
+	}
+	if hAlign, ok := data["horzAlign"].(int32); ok {
+		slice.HorizontalAlign = hAlign
+	}
+	if vAlign, ok := data["vertAlign"].(int32); ok {
+		slice.VerticalAlign = vAlign
+	}
+
+	return slice
 }
 
 // ParseGuides parses the guides resource (ID 1032)

@@ -2,6 +2,7 @@ package psd
 
 import (
 	"fmt"
+	"image"
 	"strings"
 )
 
@@ -253,6 +254,30 @@ func (n *Node) IsVisible() bool {
 	return n.Visible
 }
 
+// IsTextLayer returns whether this is a text layer
+func (n *Node) IsTextLayer() bool {
+	if n.Layer == nil {
+		return false
+	}
+	return n.Layer.TypeTool != nil
+}
+
+// GetTextInfo returns the TypeTool information if this is a text layer
+func (n *Node) GetTextInfo() *TypeToolInfo {
+	if n.Layer == nil {
+		return nil
+	}
+	return n.Layer.TypeTool
+}
+
+// GetTextContent returns the text content if this is a text layer
+func (n *Node) GetTextContent() string {
+	if n.Layer != nil && n.Layer.TypeTool != nil {
+		return n.Layer.TypeTool.Text()
+	}
+	return ""
+}
+
 // FillOpacity returns the fill opacity (default 255 for now)
 func (n *Node) FillOpacity() uint8 {
 	// TODO: Parse from layer info
@@ -325,4 +350,18 @@ func maxInt32FromNodes(nodes []*Node, selector func(*Node) int32) int32 {
 		}
 	}
 	return max
+}
+
+// ToPNGWithOptions renders the node to a PNG image with options
+func (n *Node) ToPNGWithOptions(opts RendererOptions) (*image.RGBA, error) {
+	renderer := NewRendererWithOptions(n, opts)
+	return renderer.Render()
+}
+
+// ToPNGWithoutText renders the node to a PNG image excluding text layers
+func (n *Node) ToPNGWithoutText() (*image.RGBA, error) {
+	opts := RendererOptions{
+		ExcludeTextLayers: true,
+	}
+	return n.ToPNGWithOptions(opts)
 }

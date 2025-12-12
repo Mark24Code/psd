@@ -29,6 +29,9 @@ type Layer struct {
 	// Additional layer information
 	LayerInfo map[string][]byte
 
+	// Parsed layer info
+	TypeTool *TypeToolInfo
+
 	// Channel image data
 	channels    map[int16]*ChannelImage
 	ChannelData map[int16][]byte
@@ -287,6 +290,13 @@ func (l *Layer) parseAdditionalLayerInfo(length int64) error {
 				break
 			}
 			l.LayerInfo[key] = data
+
+			// Parse TypeTool if this is a text layer
+			if key == "TySh" {
+				if typeTool, err := ParseTypeTool(data); err == nil {
+					l.TypeTool = typeTool
+				}
+			}
 
 			// Padding to multiple of 4
 			if dataLen%4 != 0 {

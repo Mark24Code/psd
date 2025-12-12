@@ -8,14 +8,26 @@ import (
 	"os"
 )
 
+// RendererOptions contains options for rendering
+type RendererOptions struct {
+	ExcludeTextLayers bool     // Exclude text layers from rendering
+	ExcludeTypes      []string // Exclude specific node types
+}
+
 // Renderer handles rendering nodes to images
 type Renderer struct {
-	node   *Node
-	canvas *image.RGBA
+	node    *Node
+	canvas  *image.RGBA
+	options RendererOptions
 }
 
 // NewRenderer creates a new renderer for the given node
 func NewRenderer(node *Node) *Renderer {
+	return NewRendererWithOptions(node, RendererOptions{})
+}
+
+// NewRendererWithOptions creates a new renderer with options
+func NewRendererWithOptions(node *Node, options RendererOptions) *Renderer {
 	width := int(node.Width())
 	height := int(node.Height())
 
@@ -23,8 +35,9 @@ func NewRenderer(node *Node) *Renderer {
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	return &Renderer{
-		node:   node,
-		canvas: canvas,
+		node:    node,
+		canvas:  canvas,
+		options: options,
 	}
 }
 
@@ -51,6 +64,11 @@ func (r *Renderer) renderNode(node *Node, offsetX, offsetY int32) error {
 		return nil
 	}
 
+	// Apply filters
+	if r.shouldExcludeNode(node) {
+		return nil
+	}
+
 	if node.Type == NodeTypeLayer {
 		// Render layer
 		if node.Layer != nil {
@@ -67,6 +85,23 @@ func (r *Renderer) renderNode(node *Node, offsetX, offsetY int32) error {
 	}
 
 	return nil
+}
+
+// shouldExcludeNode checks if a node should be excluded based on options
+func (r *Renderer) shouldExcludeNode(node *Node) bool {
+	// Check if text layers should be excluded
+	if r.options.ExcludeTextLayers && node.IsTextLayer() {
+		return true
+	}
+
+	// Check if node type is in exclusion list
+	for _, excludeType := range r.options.ExcludeTypes {
+		if node.Type == excludeType {
+			return true
+		}
+	}
+
+	return false
 }
 
 // renderLayer renders a single layer to the canvas
