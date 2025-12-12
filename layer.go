@@ -25,6 +25,7 @@ type Layer struct {
 	Clipping     uint8
 	Flags        uint8
 	Name         string
+	Mask         *LayerMask // Layer mask information
 
 	// Additional layer information
 	LayerInfo map[string][]byte
@@ -48,6 +49,31 @@ type ChannelImage struct {
 type ChannelInfo struct {
 	ID     int16
 	Length uint32
+}
+
+// LayerMask represents layer mask information
+type LayerMask struct {
+	Top          int32
+	Left         int32
+	Bottom       int32
+	Right        int32
+	DefaultColor uint8
+	Flags        uint8
+}
+
+// Width returns the width of the mask
+func (m *LayerMask) Width() int32 {
+	return m.Right - m.Left
+}
+
+// Height returns the height of the mask
+func (m *LayerMask) Height() int32 {
+	return m.Bottom - m.Top
+}
+
+// IsEmpty returns true if the mask has zero dimensions
+func (m *LayerMask) IsEmpty() bool {
+	return m.Width() == 0 || m.Height() == 0
 }
 
 // parseRecord parses the layer record (not the channel image data)
@@ -198,8 +224,47 @@ func (l *Layer) parseLayerMaskData() error {
 		return err
 	}
 
-	if length > 0 {
-		if err := l.file.Skip(int64(length)); err != nil {
+	if length == 0 {
+		return nil
+	}
+
+	// Parse mask data
+	l.Mask = &LayerMask{}
+
+	l.Mask.Top, err = l.file.ReadInt32()
+	if err != nil {
+		return err
+	}
+
+	l.Mask.Left, err = l.file.ReadInt32()
+	if err != nil {
+		return err
+	}
+
+	l.Mask.Bottom, err = l.file.ReadInt32()
+	if err != nil {
+		return err
+	}
+
+	l.Mask.Right, err = l.file.ReadInt32()
+	if err != nil {
+		return err
+	}
+
+	l.Mask.DefaultColor, err = l.file.ReadByte()
+	if err != nil {
+		return err
+	}
+
+	l.Mask.Flags, err = l.file.ReadByte()
+	if err != nil {
+		return err
+	}
+
+	// Skip any remaining mask data (padding, real flags, etc.)
+	bytesRead := int64(20) // 4*4 (rectangle) + 1 (default color) + 1 (flags)
+	if bytesRead < int64(length) {
+		if err := l.file.Skip(int64(length) - bytesRead); err != nil {
 			return err
 		}
 	}
@@ -316,17 +381,6 @@ func (l *Layer) parseChannelData() error {
 	l.channels = make(map[int16]*ChannelImage)
 	l.ChannelData = make(map[int16][]byte)
 
-	// Debug logging for specific layer
-	isColorFillLayer := l.Name == "颜色填充 2"
-	if isColorFillLayer {
-		fmt.Printf("\n=== DEBUG: Parsing channels for layer '%s' ===\n", l.Name)
-		fmt.Printf("Layer Opacity: %d\n", l.Opacity)
-		fmt.Printf("Number of channels: %d\n", len(l.ChannelInfo))
-		for i, ch := range l.ChannelInfo {
-			fmt.Printf("  Channel[%d]: ID=%d, Length=%d\n", i, ch.ID, ch.Length)
-		}
-	}
-
 	for _, chanInfo := range l.ChannelInfo {
 		// Record file position at start of this channel
 		startPos, err := l.file.Tell()
@@ -387,33 +441,6 @@ func (l *Layer) parseChannelData() error {
 				Compression: compression,
 			}
 
-			// Debug logging for color fill layer
-			if isColorFillLayer {
-				fmt.Printf("\nChannel %d (RLE decompressed): %d bytes\n", chanInfo.ID, len(decompressed))
-				if len(decompressed) > 0 {
-					// Print first 20 bytes
-					end := 20
-					if len(decompressed) < end {
-						end = len(decompressed)
-					}
-					fmt.Printf("  First %d bytes: %v\n", end, decompressed[:end])
-
-					// Check if all bytes are the same
-					allSame := true
-					if len(decompressed) > 1 {
-						first := decompressed[0]
-						for _, b := range decompressed[1:min(1000, len(decompressed))] {
-							if b != first {
-								allSame = false
-								break
-							}
-						}
-						if allSame {
-							fmt.Printf("  First 1000 bytes are all: %d\n", first)
-						}
-					}
-				}
-			}
 
 		default:
 			// Skip unknown compression
@@ -635,6 +662,14 @@ func (l *Layer) ToImage() (*image.RGBA, error) {
 
 	if width == 0 || height == 0 {
 		return nil, nil
+	}
+
+	// Check if layer has an empty mask - if so, return fully transparent image
+	// Empty mask (0x0 dimensions) means the layer should be completely transparent
+	if l.Mask != nil && l.Mask.IsEmpty() {
+		img := image.NewRGBA(image.Rect(0, 0, width, height))
+		// Image is already transparent (zero-initialized)
+		return img, nil
 	}
 
 	// Create image
