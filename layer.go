@@ -314,16 +314,27 @@ func (l *Layer) parseChannelData() error {
 	l.ChannelData = make(map[int16][]byte)
 
 	for _, chanInfo := range l.ChannelInfo {
-		// Debug: Check if channel is being skipped
+		// Record file position at start of this channel
+		startPos, err := l.file.Tell()
+		if err != nil {
+			return fmt.Errorf("failed to get file position for channel %d: %w", chanInfo.ID, err)
+		}
+
+		// If channel has no data (length <= 2 means only compression header or nothing),
+		// we still need to read/skip the bytes to keep file pointer aligned
 		if chanInfo.Length <= 2 {
-			// This channel has no data or only compression header, skip it
+			if chanInfo.Length > 0 {
+				// Seek past the channel data (usually just the 2-byte compression header)
+				if err := l.file.Skip(int64(chanInfo.Length)); err != nil {
+					return fmt.Errorf("failed to skip channel %d: %w", chanInfo.ID, err)
+				}
+			}
 			continue
 		}
 
 		// Read compression method
 		compression, err := l.file.ReadUint16()
 		if err != nil {
-			// File read error - possibly EOF or wrong position
 			return fmt.Errorf("failed to read compression for channel %d (length=%d): %w", chanInfo.ID, chanInfo.Length, err)
 		}
 
@@ -366,6 +377,23 @@ func (l *Layer) parseChannelData() error {
 			// Skip unknown compression
 			if err := l.file.Skip(int64(dataLength)); err != nil {
 				return fmt.Errorf("failed to skip unknown compression %d for channel %d: %w", compression, chanInfo.ID, err)
+			}
+		}
+
+		// Verify we read the correct number of bytes
+		// This is CRITICAL - if we didn't read exactly chanInfo.Length bytes,
+		// we need to seek to the correct position for the next channel
+		finishPos, err := l.file.Tell()
+		if err != nil {
+			return fmt.Errorf("failed to get file position after channel %d: %w", chanInfo.ID, err)
+		}
+
+		expectedPos := startPos + int64(chanInfo.Length)
+
+		if finishPos != expectedPos {
+			_, err := l.file.Seek(expectedPos, 0)
+			if err != nil {
+				return fmt.Errorf("failed to seek to correct position after channel %d: %w", chanInfo.ID, err)
 			}
 		}
 	}
