@@ -610,17 +610,25 @@ func blendVividLight(src, dst color.Color, opacity uint8) color.RGBA {
 
 	// Vivid Light blend using Ruby's formula
 	vividLightChannel := func(s, d uint8) uint8 {
-		if s < 255 {
-			// (b * b / (255 - f) + f * f / (255 - b)) >> 1
-			term1 := uint32(d) * uint32(d) / uint32(255-s)
-			term2 := uint32(s) * uint32(s) / uint32(255-d)
-			result := (term1 + term2) >> 1
-			if result > 255 {
-				return 255
-			}
-			return uint8(result)
+		// Handle edge cases to prevent division by zero
+		if s == 255 && d == 255 {
+			return 255
 		}
-		return d
+		if s == 255 {
+			return d
+		}
+		if d == 255 {
+			return 255
+		}
+
+		// (b * b / (255 - f) + f * f / (255 - b)) >> 1
+		term1 := uint32(d) * uint32(d) / uint32(255-s)
+		term2 := uint32(s) * uint32(s) / uint32(255-d)
+		result := (term1 + term2) >> 1
+		if result > 255 {
+			return 255
+		}
+		return uint8(result)
 	}
 
 	blendR := vividLightChannel(sr8, dr8)
