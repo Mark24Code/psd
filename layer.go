@@ -228,6 +228,14 @@ func (l *Layer) parseLayerMaskData() error {
 		return nil
 	}
 
+	// Calculate the end position of mask data
+	// This matches Ruby's: @mask_end = @file.tell + @size
+	startPos, err := l.file.Tell()
+	if err != nil {
+		return err
+	}
+	maskEnd := startPos + int64(length)
+
 	// Parse mask data
 	l.Mask = &LayerMaskData{}
 
@@ -261,12 +269,11 @@ func (l *Layer) parseLayerMaskData() error {
 		return err
 	}
 
-	// Skip any remaining mask data (padding, real flags, etc.)
-	bytesRead := int64(20) // 4*4 (rectangle) + 1 (default color) + 1 (flags)
-	if bytesRead < int64(length) {
-		if err := l.file.Skip(int64(length) - bytesRead); err != nil {
-			return err
-		}
+	// Seek to the end of mask data section to skip any additional data
+	// This matches Ruby's: @file.seek @mask_end
+	_, err = l.file.Seek(maskEnd, 0)
+	if err != nil {
+		return err
 	}
 
 	return nil
