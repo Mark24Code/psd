@@ -137,6 +137,15 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 	// This matches Ruby's Blender.calculated_opacity (blender.rb:50)
 	calculatedOpacity := uint8((uint32(layer.Opacity) * uint32(layer.FillOpacity())) / 255)
 
+	// Get mask data if present
+	// This matches Ruby's Canvas.apply_masks (canvas.rb:52-55)
+	var maskData []byte
+	if layer.Mask != nil && !layer.Mask.IsEmpty() {
+		if ch, exists := layer.channels[-2]; exists {
+			maskData = ch.Data
+		}
+	}
+
 	// Composite layer onto canvas pixel by pixel
 	// This matches Ruby's Blender.compose! loop (blender.rb:30-41)
 	for y := layerBounds.Min.Y; y < layerBounds.Max.Y; y++ {
@@ -151,8 +160,37 @@ func (r *Renderer) renderLayer(layer *Layer, offsetX, offsetY int32) error {
 				continue
 			}
 
-			// Get source and destination colors
+			// Get source color
 			srcColor := layerImg.At(x, y)
+
+			// Apply mask if present (matches Ruby's Mask.apply! in mask.rb:23-47)
+			if maskData != nil {
+				maskWidth := int(layer.Mask.Width())
+				maskHeight := int(layer.Mask.Height())
+
+				// Calculate mask coordinates relative to layer
+				// This matches Ruby's: mask_x = x + @left - @mask.left
+				maskX := x - int(layer.Mask.Left-layer.Left)
+				maskY := y - int(layer.Mask.Top-layer.Top)
+
+				// Apply mask to alpha
+				r, g, b, a := srcColor.RGBA()
+				if maskX < 0 || maskX >= maskWidth || maskY < 0 || maskY >= maskHeight {
+					// Outside mask bounds = fully transparent
+					// This matches Ruby's: color[3] = 0
+					a = 0
+				} else {
+					maskIdx := maskY*maskWidth + maskX
+					if maskIdx < len(maskData) {
+						// Apply mask value to alpha
+						// This matches Ruby's: color[3] = color[3] * @mask_data[@mask_width * mask_y + mask_x] / 255
+						a = (a >> 8) * uint32(maskData[maskIdx]) / 255
+					}
+				}
+				srcColor = color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a)}
+			}
+
+			// Get destination color
 			dstColor := r.canvas.At(dstX, dstY)
 
 			// Get blend function based on layer's blend mode

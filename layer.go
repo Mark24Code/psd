@@ -730,28 +730,9 @@ func (l *Layer) ToImage() (*image.RGBA, error) {
 				a = aData[idx]
 			}
 
-			// Apply layer mask if present
-			// This matches Ruby's implementation: alpha = alpha * mask_value / 255
-			if maskData != nil && l.Mask != nil && !l.Mask.IsEmpty() {
-				maskWidth := int(l.Mask.Width())
-				maskHeight := int(l.Mask.Height())
-
-				// Calculate mask coordinates relative to layer position
-				maskX := x + int(l.Left-l.Mask.Left)
-				maskY := y + int(l.Top-l.Mask.Top)
-
-				// Check if pixel is within mask bounds
-				if maskX >= 0 && maskX < maskWidth && maskY >= 0 && maskY < maskHeight {
-					maskIdx := maskY*maskWidth + maskX
-					if maskIdx < len(maskData) {
-						// Apply mask: alpha = alpha * mask_value / 255
-						a = uint8((uint32(a) * uint32(maskData[maskIdx])) / 255)
-					}
-				} else {
-					// Outside mask bounds means fully transparent
-					a = 0
-				}
-			}
+			// NOTE: Mask is NOT applied here - it will be applied in renderer
+			// This matches Ruby's architecture where mask is applied in Canvas.paint_to()
+			// not in the layer image extraction phase
 
 			img.Set(x, y, color.RGBA{R: r, G: g, B: b, A: a})
 		}
