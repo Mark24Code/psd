@@ -186,6 +186,9 @@ func (l *Layer) parseRecord() error {
 		}
 	}
 
+	// Enhance layer with parsed info (e.g., Unicode name from 'luni')
+	l.EnhanceLayerWithParsedInfo()
+
 	return nil
 }
 
